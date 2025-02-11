@@ -25,9 +25,9 @@ jobs:
       - name: 🔍 Debug Environment Variables
         run: |
           echo "Checking if secrets are set..."
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" | sed 's/./& /g'
-          echo "SHEET_ID=${{ secrets.SHEET_ID }}" | sed 's/./& /g'
-          echo "GOOGLE_CREDENTIALS_JSON=${{ secrets.GOOGLE_CREDENTIALS_JSON }}" | sed 's/./& /g'
+          echo "OPENAI_API_KEY is set? ${#OPENAI_API_KEY}"
+          echo "SHEET_ID is set? ${#SHEET_ID}"
+          echo "GOOGLE_CREDENTIALS_JSON length: ${#GOOGLE_CREDENTIALS_JSON}"
 
       - name: 🔑 Set Environment Variables
         env:
@@ -37,6 +37,10 @@ jobs:
         run: echo "✅ Environment variables set."
 
       - name: 🚀 Run Python Script
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         run: python scriptrev.py
 
       - name: ✅ Workflow Completed
