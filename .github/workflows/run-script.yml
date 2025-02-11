@@ -1,11 +1,11 @@
 name: Run Google Sheets Script
 
 on:
-  workflow_dispatch:  # Allows manual trigger from GitHub Actions
+  workflow_dispatch:
 
 jobs:
   run-script:
-    runs-on: ubuntu-latest  # Uses the latest Ubuntu runner
+    runs-on: ubuntu-latest
 
     steps:
       - name: 🛎 Checkout Repository
@@ -20,17 +20,24 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install --upgrade openai  # Ensure OpenAI is installed correctly
+          pip install --upgrade openai
+
+      - name: 🔍 Debug Environment Variables
+        run: |
+          echo "Checking if secrets are set..."
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" | sed 's/./& /g'
+          echo "SHEET_ID=${{ secrets.SHEET_ID }}" | sed 's/./& /g'
+          echo "GOOGLE_CREDENTIALS_JSON=${{ secrets.GOOGLE_CREDENTIALS_JSON }}" | sed 's/./& /g'
 
       - name: 🔑 Set Environment Variables
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-        run: echo "Environment variables set successfully."
+        run: echo "✅ Environment variables set."
 
       - name: 🚀 Run Python Script
         run: python scriptrev.py
 
       - name: ✅ Workflow Completed
-        run: echo "Script execution finished successfully."
+        run: echo "🎉 Script execution finished successfully."
