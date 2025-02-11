@@ -23,18 +23,30 @@ sheet_id = os.getenv("SHEET_ID")
 google_credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
 # Convert Google credentials JSON string into a dictionary
-google_credentials = json.loads(google_credentials_json)
+try:
+    google_credentials = json.loads(google_credentials_json)
+    logging.info("✅ Google credentials loaded successfully.")
+except Exception as e:
+    logging.exception("❌ Error loading Google credentials:")
+    google_credentials = None
+
+# ✅ Fix: Use the correct Google Sheets API scopes
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
+]
 
 # Authenticate with Google Sheets
 def load_gsheet_credentials():
     try:
-        creds = service_account.Credentials.from_service_account_info(google_credentials)
+        creds = service_account.Credentials.from_service_account_info(google_credentials, scopes=SCOPES)
         client = gspread.authorize(creds)
-        logging.info("✅ Google Sheets credentials loaded successfully.")
+        logging.info("✅ Successfully authenticated with Google Sheets.")
         return client
     except Exception as e:
-        logging.exception("❌ Failed to load Google Sheets credentials:")
-        raise
+        logging.exception("❌ Failed to authenticate with Google Sheets:")
+        return None
 
 # Scrape page content using Selenium and BeautifulSoup
 def scrape_page_content(url):
@@ -93,7 +105,7 @@ def generate_openai_content(prompt, content_a, content_b):
         logging.exception("❌ Failed to generate content with OpenAI:")
         return ""
 
-# Update Google Sheets with generated content
+# ✅ Update Google Sheets with generated content
 def update_gsheet(sheet, row, meta_title, meta_desc, new_content):
     try:
         sheet.update_cell(row, 4, meta_title)   # Column D
@@ -103,11 +115,19 @@ def update_gsheet(sheet, row, meta_title, meta_desc, new_content):
     except Exception as e:
         logging.exception(f"❌ Failed to update Google Sheets at row {row}:")
 
-# Main function to process data
+# ✅ Main function to process data
 def main():
     try:
         client = load_gsheet_credentials()
-        sheet = client.open_by_key(sheet_id).sheet1
+        if client is None:
+            logging.error("❌ Google Sheets client is None. Exiting script.")
+            return
+
+        try:
+            sheet = client.open_by_key(sheet_id).sheet1
+        except Exception as e:
+            logging.exception(f"❌ Could not open Google Sheet with ID {sheet_id}:")
+            return
 
         rows = sheet.get_all_values()
         for idx, row in enumerate(rows[1:], start=2):
@@ -144,6 +164,11 @@ def main():
                     logging.warning(f"⚠️ No content could be scraped from URL for row {idx}.")
             else:
                 logging.warning(f"⚠️ No URL found for row {idx}.")
+        
+        # ✅ Update status cell to confirm script execution
+        sheet.update_acell("A1", "✅ GitHub Workflow Ran Successfully!")
+        logging.info("✅ Google Sheet Status Updated!")
+
     except Exception as e:
         logging.exception("❌ An error occurred in the main process:")
 
