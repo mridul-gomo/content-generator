@@ -2,9 +2,7 @@ import os
 import openai
 import gspread
 import json
-import time
 import logging
-from bs4 import BeautifulSoup
 from google.oauth2 import service_account
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -13,22 +11,29 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup
+import time
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Load credentials from GitHub Secrets
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
 sheet_id = os.getenv("SHEET_ID")
 google_credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
-# Convert Google credentials JSON string into a dictionary
+# ✅ Ensure GOOGLE_CREDENTIALS_JSON is not None
+if not google_credentials_json:
+    logging.error("❌ GOOGLE_CREDENTIALS_JSON is missing or not set in GitHub Secrets.")
+    exit(1)
+
+# ✅ Convert Google credentials JSON string into a dictionary
 try:
     google_credentials = json.loads(google_credentials_json)
     logging.info("✅ Google credentials loaded successfully.")
-except Exception as e:
-    logging.exception("❌ Error loading Google credentials:")
-    google_credentials = None
+except json.JSONDecodeError as e:
+    logging.error(f"❌ Error parsing Google credentials JSON: {e}")
+    exit(1)
 
 # ✅ Fix: Use the correct Google Sheets API scopes
 SCOPES = [
@@ -69,7 +74,6 @@ def scrape_page_content(url):
 
         body = soup.find("body")
         if body:
-            # Remove unwanted tags
             for tag in body(["header", "footer", "script", "nav"]):
                 tag.extract()
             logging.info("✅ Successfully extracted body content.")
@@ -83,16 +87,17 @@ def scrape_page_content(url):
 
 # Process the generated content: split into meta title, meta description, and content
 def process_generated_content(generated_content):
-    lines = generated_content.split("\n")
+    lines = generated_content.strip().split("\n")
     meta_title = lines[0].strip() if len(lines) > 0 else ""
     meta_desc = lines[1].strip() if len(lines) > 1 else ""
     final_content = "\n".join([line.strip() for line in lines[2:]]) if len(lines) > 2 else ""
     return meta_title, meta_desc, final_content
 
-# ✅ Fixed OpenAI API Call
+# ✅ Fixed OpenAI API Call for New Versions
 def generate_openai_content(prompt, content_a, content_b):
     try:
-        response = openai.chat.completions.create(
+        client = openai.OpenAI(api_key=openai_api_key)
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": prompt},
@@ -117,45 +122,41 @@ def update_gsheet(sheet, row, meta_title, meta_desc, new_content):
 
 # ✅ Main function to process data
 def main():
+    client = load_gsheet_credentials()
+    if client is None:
+        logging.error("❌ Google Sheets client is None. Exiting script.")
+        exit(1)
+
     try:
-        client = load_gsheet_credentials()
-        if client is None:
-            logging.error("❌ Google Sheets client is None. Exiting script.")
-            return
-
-        try:
-            sheet = client.open_by_key(sheet_id).sheet1
-        except Exception as e:
-            logging.exception(f"❌ Could not open Google Sheet with ID {sheet_id}:")
-            return
-
-        rows = sheet.get_all_values()
-        for idx, row in enumerate(rows[1:], start=2):
-            url = row[0].strip() if len(row) > 0 else ""
-            provided_content = row[1].strip() if len(row) > 1 else ""
-            keywords = row[2].strip() if len(row) > 2 else ""
-
-            if url:
-                logging.info(f"📌 Processing row {idx} with URL: {url}")
-                scraped_content = scrape_page_content(url)
-
-                if scraped_content:
-                    generated_content = generate_openai_content("Generate SEO content", scraped_content, provided_content)
-
-                    if generated_content:
-                        meta_title, meta_desc, final_content = process_generated_content(generated_content)
-                        update_gsheet(sheet, idx, meta_title, meta_desc, final_content)
-                    else:
-                        logging.warning(f"⚠️ No content generated for row {idx}.")
-                else:
-                    logging.warning(f"⚠️ No content could be scraped from URL for row {idx}.")
-        
-        # ✅ Update status cell to confirm script execution
-        sheet.update_acell("A1", "✅ GitHub Workflow Ran Successfully!")
-        logging.info("✅ Google Sheet Status Updated!")
-
+        sheet = client.open_by_key(sheet_id).sheet1
     except Exception as e:
-        logging.exception("❌ An error occurred in the main process:")
+        logging.exception(f"❌ Could not open Google Sheet with ID {sheet_id}:")
+        return
+
+    rows = sheet.get_all_values()
+    for idx, row in enumerate(rows[1:], start=2):
+        url = row[0].strip() if len(row) > 0 else ""
+        provided_content = row[1].strip() if len(row) > 1 else ""
+        keywords = row[2].strip() if len(row) > 2 else ""
+
+        if url:
+            logging.info(f"📌 Processing row {idx} with URL: {url}")
+            scraped_content = scrape_page_content(url)
+
+            if scraped_content:
+                generated_content = generate_openai_content("Generate SEO content", scraped_content, provided_content)
+
+                if generated_content:
+                    meta_title, meta_desc, final_content = process_generated_content(generated_content)
+                    update_gsheet(sheet, idx, meta_title, meta_desc, final_content)
+                else:
+                    logging.warning(f"⚠️ No content generated for row {idx}.")
+            else:
+                logging.warning(f"⚠️ No content could be scraped from URL for row {idx}.")
+    
+    # ✅ Update status cell to confirm script execution
+    sheet.update_acell("A1", "✅ GitHub Workflow Ran Successfully!")
+    logging.info("✅ Google Sheet Status Updated!")
 
 if __name__ == "__main__":
     main()
