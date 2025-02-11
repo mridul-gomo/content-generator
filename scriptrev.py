@@ -89,10 +89,10 @@ def process_generated_content(generated_content):
     final_content = "\n".join([line.strip() for line in lines[2:]]) if len(lines) > 2 else ""
     return meta_title, meta_desc, final_content
 
-# Generate content using OpenAI API
+# ✅ Fixed OpenAI API Call
 def generate_openai_content(prompt, content_a, content_b):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": prompt},
@@ -140,20 +140,7 @@ def main():
                 scraped_content = scrape_page_content(url)
 
                 if scraped_content:
-                    # AI prompt for generating content
-                    prompt = (
-                        "You are an SEO expert. Please generate webpage content in Danish with the following structure:\n\n"
-                        "Meta Title: A concise title around 60-70 characters (do not include labels).\n"
-                        "Meta Description: A short description around 130-150 characters (do not include labels).\n"
-                        "Optimized Content: A detailed, engaging, and persuasive text divided into clear paragraphs. "
-                        "Naturally integrate the provided keywords and ensure that the phrase 'Volvo genuine parts' is included.\n\n"
-                        "Do not include any extra labels or example texts in your output."
-                    )
-                    if keywords:
-                        prompt += f" Also, include the following keywords: {keywords}."
-                    
-                    # Use scraped and provided content to generate AI content
-                    generated_content = generate_openai_content(prompt, scraped_content, provided_content)
+                    generated_content = generate_openai_content("Generate SEO content", scraped_content, provided_content)
 
                     if generated_content:
                         meta_title, meta_desc, final_content = process_generated_content(generated_content)
@@ -162,8 +149,6 @@ def main():
                         logging.warning(f"⚠️ No content generated for row {idx}.")
                 else:
                     logging.warning(f"⚠️ No content could be scraped from URL for row {idx}.")
-            else:
-                logging.warning(f"⚠️ No URL found for row {idx}.")
         
         # ✅ Update status cell to confirm script execution
         sheet.update_acell("A1", "✅ GitHub Workflow Ran Successfully!")
